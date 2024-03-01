@@ -106,8 +106,8 @@ int main(int argc, char *argv[])
     }
     printf("connected to server\n");
 
-    char again;
-    do 
+    char again = 'y';
+    while (again == 'y')
     {
         // Send the data.
         int bytesSent = 0;
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
 
         printf("Do you want to send the message again? (y/n): ");
         scanf(" %c", &again);
-    } while (again == 'y');
+    }
 
     // Send exit message to the server
     printf("Sending exit message to the server\n");
