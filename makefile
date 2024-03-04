@@ -1,6 +1,6 @@
 .PHONY: all clean
 
-all: TCP_Receiver TCP_Sender
+all: TCP_Receiver TCP_Sender RUDP_Receiver RUDP_Sender
 
 TCP_Receiver: TCP_Receiver.o
 	@gcc -o TCP_Receiver TCP_Receiver.o
@@ -14,6 +14,17 @@ TCP_Receiver.o: TCP_Receiver.c
 TCP_Sender.o: TCP_Sender.c
 	@gcc -c TCP_Sender.c
 
+RUDP_Receiver: RUDP_Receiver.o
+	@gcc -o RUDP_Receiver RUDP_Receiver.o
+
+RUDP_Sender: RUDP_Sender.o
+	@gcc -o RUDP_Sender RUDP_Sender.o
+
+RUDP_Receiver.o: RUDP_Receiver.c
+	@gcc -c RUDP_Receiver.c
+
+RUDP_Sender.o: RUDP_Sender.c
+	@gcc -c RUDP_Sender.c
 
 clean:
-	@rm -f *.o TCP_Receiver TCP_Sender
+	@rm -f *.o TCP_Receiver TCP_Sender RUDP_Receiver RUDP_Sender
