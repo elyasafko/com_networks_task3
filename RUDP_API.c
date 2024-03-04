@@ -1,64 +1,120 @@
-#include <stdbool.h> // Include the header file for the bool type.
-#include <netinet/in.h> // Include the header file for the sockaddr_in structure.
-#include <stdlib.h> // Include the header file for the malloc function.
-#include <string.h> // Include the header file for the memset function.
+#include "RUDP_API.h"
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
+// Define flags for the RUDP header
+#define RUDP_SYN_FLAG 0x01
+#define RUDP_ACK_FLAG 0x02
 
-// A struct that represents RUDP Socket
-typedef struct _rudp_socket
+// RUDP header structure
+struct RUDPHeader 
 {
-int socket_fd; // UDP socket file descriptor
+    uint16_t length;
+    uint16_t checksum;
+    uint8_t flags;
+};
 
-bool isServer; // True if the RUDP socket acts like a server, false for client.
-bool isConnected; // True if there is an active connection, false otherwise.
-
-struct sockaddr_in dest_addr; // Destination address. Client fills it when it connects via rudp_connect(), server fills it when it accepts a connection via rudp_accept().
-} RUDP_Socket;
-
-// Allocates a new structure for the RUDP socket (contains basic information about the socket itself). Also creates a UDP socket as a baseline for the RUDP. isServer means that this socket acts like a server. If set to server socket, it also binds the socket to a specific port.
-RUDP_Socket* rudp_socket(bool isServer, unsigned short int listen_port)
+RUDP_Socket* rudp_socket(bool isServer, unsigned short int listen_port) 
 {
-    RUDP_Socket *sockfd = (RUDP_Socket *)malloc(sizeof(RUDP_Socket));
-    if (sockfd == NULL)
+    RUDP_Socket* sockfd = (RUDP_Socket*)malloc(sizeof(RUDP_Socket));
+    if (sockfd == NULL) 
     {
         return NULL;
     }
+
     sockfd->socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd->socket_fd == -1)
+    if (sockfd->socket_fd == -1) 
     {
         free(sockfd);
         return NULL;
     }
+
     sockfd->isServer = isServer;
     sockfd->isConnected = false;
-    if (isServer)
+
+    if (isServer) 
     {
         sockfd->dest_addr.sin_family = AF_INET;
         sockfd->dest_addr.sin_port = htons(listen_port);
         sockfd->dest_addr.sin_addr.s_addr = INADDR_ANY;
-        if (bind(sockfd->socket_fd, (struct sockaddr *)&(sockfd->dest_addr), sizeof(sockfd->dest_addr)) == -1)
+
+        if (bind(sockfd->socket_fd, (struct sockaddr*)&(sockfd->dest_addr), sizeof(sockfd->dest_addr)) == -1) 
         {
             free(sockfd);
             return NULL;
         }
     }
+    
     return sockfd;
 }
-// Tries to connect to the other side via RUDP to given IP and port. Returns 0 on failure and 1 on success. Fails if called when the socket is connected/set to server.
-int rudp_connect(RUDP_Socket *sockfd, const char *dest_ip, unsigned short int dest_port)
+
+int rudp_handshake(RUDP_Socket* sockfd) 
 {
-    if (sockfd->isServer || sockfd->isConnected)
+    struct RUDPHeader syn_packet;
+    socklen_t addr_len = sizeof(sockfd->dest_addr);
+
+    if (sockfd->isServer) 
+    {
+        // Server waits for SYN packet from the client
+        recvfrom(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
+                 &addr_len);
+
+        if (syn_packet.flags != RUDP_SYN_FLAG) 
+        {
+            return 0; // Handshake failed
+        }
+
+        // Send ACK packet to the client
+        struct RUDPHeader ack_packet;
+        ack_packet.length = 0;
+        ack_packet.checksum = 0;
+        ack_packet.flags = RUDP_ACK_FLAG;
+
+        sendto(sockfd->socket_fd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
+               sizeof(sockfd->dest_addr));
+
+    } else {
+        // Client sends SYN packet to the server
+        syn_packet.length = 0;
+        syn_packet.checksum = 0;
+        syn_packet.flags = RUDP_SYN_FLAG;
+
+        sendto(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
+               sizeof(sockfd->dest_addr));
+
+        // Receive ACK packet from the server
+        recvfrom(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
+                 &addr_len);
+
+        if (syn_packet.flags != RUDP_ACK_FLAG) 
+        {
+            return 0; // Handshake failed
+        }
+    }
+
+    sockfd->isConnected = true;
+    return 1; // Handshake successful
+}
+
+int rudp_connect(RUDP_Socket* sockfd, const char* dest_ip, unsigned short int dest_port) 
+{
+    if (sockfd->isServer || sockfd->isConnected) 
     {
         return 0;
     }
+
     sockfd->dest_addr.sin_family = AF_INET;
     sockfd->dest_addr.sin_port = htons(dest_port);
-    if (inet_pton(AF_INET, dest_ip, &(sockfd->dest_addr.sin_addr)) <= 0)
+
+    if (inet_pton(AF_INET, dest_ip, &(sockfd->dest_addr.sin_addr)) <= 0) 
     {
         return 0;
     }
-    sockfd->isConnected = true;
-    return 1;
+
+    // Perform handshake
+    return rudp_handshake(sockfd);
 }
 
 // Accepts incoming connection request and completes the handshake, returns 0 on failure and 1 on success. Fails if called when the socket is connected/set to client.

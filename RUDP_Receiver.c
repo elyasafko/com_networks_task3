@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <time.h>
 #include <stdbool.h>
+#include "RUDP_API.h"
 
 
 
@@ -152,7 +153,7 @@ int main(int argc, char *argv[])
 
     // Try to create a UDP socket (IPv4, datagram-based, default protocol).
     // sock = socket(AF_INET, SOCK_DGRAM, 0);
-    sock = rudp_socket(true, argv[2]);
+    sock = rudp_socket(true, atoi(argv[2]));
 
     if (sock == -1)
     {
@@ -176,7 +177,7 @@ int main(int argc, char *argv[])
     server.sin_family = AF_INET;
 
     // Set the server's port to the specified port. Note that the port must be in network byte order.
-    server.sin_port = htons(argv[2]);
+    server.sin_port = htons(atoi(argv[2]));
 
     // Try to bind the socket to the server's address and port.
     if (bind(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
@@ -186,7 +187,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    fprintf(stdout, "Listening on port %d...\n", argv[2]);
+    fprintf(stdout, "Listening on port %d...\n", server.sin_port);
 
     // The server's main loop.
     while (1)

@@ -5,6 +5,10 @@
 #include <string.h> // For the memset function
 #include <sys/time.h> // For tv struct
 #include <stdbool.h>
+#include <stdlib.h>
+#include <time.h>
+#include "RUDP_API.h"
+
 
 
 #define BUFFER_SIZE 65536
@@ -50,7 +54,7 @@ int main(int argc, char *argv[])
     }
 
     // The variable to store the socket file descriptor.
-    int sock = -1;
+    RUDP_Socket* sock = NULL;
 
     // The variable to store the server's address.
     struct sockaddr_in server;
@@ -66,7 +70,7 @@ int main(int argc, char *argv[])
     sock = rudp_socket(false, 0);
 
     // If the socket creation failed, print an error message and return 1.
-    if (sock == -1)
+    if (sock == NULL)
     {
         perror("socket(2)");
         return 1;
@@ -77,7 +81,7 @@ int main(int argc, char *argv[])
     if (inet_pton(AF_INET, argv[2], &server.sin_addr) <= 0)
     {
         perror("inet_pton(3)");
-        close(sock);
+        rudp_close(sock);
         return 1;
     }
 
@@ -86,7 +90,7 @@ int main(int argc, char *argv[])
 
     // Set the server's port to the defined port. Note that the port must be in network byte order,
     // so we first convert it to network byte order using the htons function.
-    server.sin_port = htons(argv[4]);
+    server.sin_port = htons(atoi(argv[4]));
 
     // Since in UDP there is no connection, there isn't a guarantee that the server is up and running.
     // Therefore, we set a timeout for the recvfrom(2) call using the setsockopt function.
@@ -95,7 +99,7 @@ int main(int argc, char *argv[])
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv)) == -1)
     {
         perror("setsockopt(2)");
-        close(sock);
+        rudp_close(sock);
         return 1;
     }
 
@@ -108,14 +112,14 @@ int main(int argc, char *argv[])
     while (remaining_bytes > 0) 
     {
         // Try to send the remaining part of the message to the server using the created socket and the server structure.
-        int bytes_sent = sendto(sock, message + total_bytes_sent, remaining_bytes, 0, (struct sockaddr *)&server, sizeof(server));
+        int bytes_sent = rudp_send(sock, message + total_bytes_sent, BUFFER_SIZE);
 
         // If the message sending failed, print an error message and return 1.
         // If no data was sent, print an error message and return 1. In UDP, this should not happen unless the message is empty.
         if (bytes_sent <= 0) 
         {
             perror("sendto(2)");
-            close(sock);
+            rudp_close(sock);
             return 1;
         }
 
@@ -142,7 +146,7 @@ int main(int argc, char *argv[])
     if (bytes_received <= 0)
     {
         perror("recvfrom(2)");
-        close(sock);
+        rudp_close(sock);
         return 1;
     }
 
@@ -155,7 +159,7 @@ int main(int argc, char *argv[])
     fprintf(stdout, "Got %d bytes from %s:%d: %s\n", bytes_received, inet_ntoa(recv_server.sin_addr), ntohs(recv_server.sin_port), buffer);
 
     // Close the socket UDP socket.
-    close(sock);
+    rudp_close(sock);
 
     fprintf(stdout, "Client finished!\n");
 
