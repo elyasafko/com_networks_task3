@@ -42,9 +42,11 @@ RUDP_Socket* rudp_socket(bool isServer, unsigned short int listen_port)
 
         if (bind(sockfd->socket_fd, (struct sockaddr*)&(sockfd->dest_addr), sizeof(sockfd->dest_addr)) == -1) 
         {
+            perror("bind(2)");
             free(sockfd);
             return NULL;
         }
+        printf("Listening on port %d...\n", listen_port);
     }
     
     return sockfd;
@@ -58,8 +60,7 @@ int rudp_handshake(RUDP_Socket* sockfd)
     if (sockfd->isServer) 
     {
         // Server waits for SYN packet from the client
-        recvfrom(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
-                 &addr_len);
+        recvfrom(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),&addr_len);
 
         if (syn_packet.flags != RUDP_SYN_FLAG) 
         {
@@ -72,8 +73,7 @@ int rudp_handshake(RUDP_Socket* sockfd)
         ack_packet.checksum = 0;
         ack_packet.flags = RUDP_ACK_FLAG;
 
-        sendto(sockfd->socket_fd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
-               sizeof(sockfd->dest_addr));
+        sendto(sockfd->socket_fd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),sizeof(sockfd->dest_addr));
 
     } else {
         // Client sends SYN packet to the server
@@ -81,12 +81,10 @@ int rudp_handshake(RUDP_Socket* sockfd)
         syn_packet.checksum = 0;
         syn_packet.flags = RUDP_SYN_FLAG;
 
-        sendto(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
-               sizeof(sockfd->dest_addr));
+        sendto(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),sizeof(sockfd->dest_addr));
 
         // Receive ACK packet from the server
-        recvfrom(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),
-                 &addr_len);
+        recvfrom(sockfd->socket_fd, &syn_packet, sizeof(syn_packet), 0, (struct sockaddr*)&(sockfd->dest_addr),&addr_len);
 
         if (syn_packet.flags != RUDP_ACK_FLAG) 
         {

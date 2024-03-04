@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
     StrList *list = StrList_alloc();
 
     // The variable to store the socket file descriptor.
-    int sock = -1;
+    RUDP_Socket* sock = NULL;
 
     // The variable to store the server's address.
     struct sockaddr_in server;
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
     // sock = socket(AF_INET, SOCK_DGRAM, 0);
     sock = rudp_socket(true, atoi(argv[2]));
 
-    if (sock == -1)
+    if (sock == NULL)
     {
         perror("socket(2)");
         return 1;
@@ -163,13 +163,14 @@ int main(int argc, char *argv[])
 
     // Set the socket option to reuse the server's address.
     // This is useful to avoid the "Address already in use" error message when restarting the server.
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    if (setsockopt(sock->socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
     {
         perror("setsockopt(2)");
-        close(sock);
+        rudp_close(sock);
         return 1;
     }
 
+    /*
     // Set the server's address to "0.0.0.0" (all IP addresses on the local machine).
     server.sin_addr.s_addr = INADDR_ANY;
 
@@ -180,14 +181,14 @@ int main(int argc, char *argv[])
     server.sin_port = htons(atoi(argv[2]));
 
     // Try to bind the socket to the server's address and port.
-    if (bind(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
+    if (bind(sock->socket_fd, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
         perror("bind(2)");
-        close(sock);
+        rudp_close(sock);
         return 1;
     }
-
     fprintf(stdout, "Listening on port %d...\n", server.sin_port);
+    */
 
     // The server's main loop.
     while (1)
@@ -198,14 +199,15 @@ int main(int argc, char *argv[])
         fprintf(stdout, "Waiting for a message from a client...\n");
 
         // Receive a message from the client and store it in the buffer.
-        int bytes_received = recvfrom(sock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&client, &client_len);
+        int bytes_received = recvfrom(sock->socket_fd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&client, &client_len);
 
         // If the message receiving failed, print an error message and return 1.
         // If the amount of received bytes is 0, the client sent an empty message, so we ignore it.
         if (bytes_received < 0)
         {
             perror("recvfrom(2)");
-            close(sock);
+            rudp_close(sock);
+            
             return 1;
         }
 
@@ -217,14 +219,14 @@ int main(int argc, char *argv[])
         fprintf(stdout, "Received %d bytes from the client %s:%d: %s\n", bytes_received, inet_ntoa(client.sin_addr), ntohs(client.sin_port), buffer);
 
         // Send back a message to the client.
-        int bytes_sent = sendto(sock, message, messageLen, 0, (struct sockaddr *)&client, client_len);
+        int bytes_sent = rudp_send(sock, message, messageLen);
 
         // If the message sending failed, print an error message and return 1.
         // We do not need to check for 0 bytes sent, as if the client disconnected, we would have already closed the socket.
         if (bytes_sent < 0)
         {
             perror("sendto(2)");
-            close(sock);
+            rudp_close(sock);
             return 1;
         }
         

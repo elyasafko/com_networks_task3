@@ -75,12 +75,19 @@ int main(int argc, char *argv[])
         perror("socket(2)");
         return 1;
     }
-
+    /*
     // Convert the server's address from text to binary form and store it in the server structure.
     // This should not fail if the address is valid (e.g. "127.0.0.1").
     if (inet_pton(AF_INET, argv[2], &server.sin_addr) <= 0)
     {
         perror("inet_pton(3)");
+        rudp_close(sock);
+        return 1;
+    }
+    */
+    if (rudp_connect(sock, argv[2], atoi(argv[4])) == 0)
+    {
+        perror("rudp_connect() failed");
         rudp_close(sock);
         return 1;
     }
@@ -96,7 +103,7 @@ int main(int argc, char *argv[])
     // Therefore, we set a timeout for the recvfrom(2) call using the setsockopt function.
     // If the server does not respond within the timeout, the client will drop.
     // The timeout is set to 2 seconds by default.
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv)) == -1)
+    if (setsockopt(sock->socket_fd, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv)) == -1)
     {
         perror("setsockopt(2)");
         rudp_close(sock);
@@ -139,7 +146,8 @@ int main(int argc, char *argv[])
     socklen_t recv_server_len = sizeof(recv_server);
 
     // Try to receive a message from the server using the socket and store it in the buffer.
-    int bytes_received = recvfrom(sock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&recv_server, &recv_server_len);
+    // int bytes_received = recvfrom(sock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&recv_server, &recv_server_len);
+    int bytes_received = rudp_recv(sock, buffer, BUFFER_SIZE);
 
     // If the message receiving failed, print an error message and return 1.
     // If no data was received, print an error message and return 1. In UDP, this should not happen unless the message is empty.
