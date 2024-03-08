@@ -88,12 +88,6 @@ void StrList_insertLast(StrList *strList, int run, double time, double speed)
     strList->_size++;
 }
 
-void cleanup(int listeningSocket, int clientSocket)
-{
-    close(clientSocket);
-    close(listeningSocket);
-}
-
 void print_stats(const StrList *strList)
 {
     printf("-----------------------------\n");
@@ -138,8 +132,8 @@ int main(int argc, char* argv[])
     printf("RUDP Receiver\n");
 
     // Create a UDP socket
-    RUDP_Socket* sock = rudp_socket(true, port);
-    if (sock == NULL)
+    int sock = rudp_socket(true, port);
+    if (sock == -1)
     {
         perror("Failed to create socket");
         return 1;
@@ -160,69 +154,69 @@ int main(int argc, char* argv[])
 
     do
     {
-    // Clear the buffer
-    memset(buffer, 0, sizeof(buffer));
+        // Clear the buffer
+        memset(buffer, 0, sizeof(buffer));
 
-    // Capture start time
-    clock_t start_time, end_time;
-    
-    // Receive data from the client in chunks
-    int bytes_received;
-    int firstround = 1;
-    int totalBytes = 0;
+        // Capture start time
+        clock_t start_time, end_time;
+        
+        // Receive data from the client in chunks
+        int bytes_received;
+        int firstround = 1;
+        int totalBytes = 0;
 
-    while ((bytes_received = rudp_recv(sock, buffer, sizeof(buffer))) > 0)
-    {
-        if (firstround)
+        while ((bytes_received = rudp_recv(sock, buffer, sizeof(buffer))) > 0)
         {
-            start_time = clock();
-            printf("Start receiving data\n");
+            if (firstround)
+            {
+                start_time = clock();
+                printf("Start receiving data\n");
+            }
+
+            if ((strstr(buffer, "Finish\n") != NULL) || (strstr(buffer, "Exit\n") != NULL))
+            {
+                printf("Received finish command. Exiting loop.\n");
+                break;
+            }
+
+            // Handle received data
+            if (bytes_received < 0)
+            {
+                perror("rudp_recv()");
+                close(sock);
+                StrList_free(strList);
+                return 1;
+            }
+            else if (bytes_received == 0)
+            {
+                fprintf(stdout, "Client disconnected\n");
+                close(sock);
+                break;
+            }
+            else
+            {
+                // Ensure that the buffer is null-terminated
+                if (buffer[BUFFER_SIZE - 1] != '\0')
+                    buffer[BUFFER_SIZE - 1] = '\0';
+            }
+
+            firstround = 0;
+            totalBytes += bytes_received;
+            printf("Received %d bytes\n", bytes_received); // Add this line for debugging
+            bzero(buffer, BUFFER_SIZE); // needed?
         }
 
-        if ((strstr(buffer, "Finish\n") != NULL) || (strstr(buffer, "Exit\n") != NULL))
-        {
-            printf("Received finish command. Exiting loop.\n");
-            break;
-        }
+        // Capture end time
+        end_time = clock();
+        printf("End receiving data\n");
+        printf("Total bytes received: %d\n", totalBytes);
 
-        // Handle received data
-        if (bytes_received < 0)
-        {
-            perror("rudp_recv()");
-            cleanup(sock->socket_fd, sock->socket_fd);
-            StrList_free(strList);
-            return 1;
-        }
-        else if (bytes_received == 0)
-        {
-            fprintf(stdout, "Client disconnected\n");
-            cleanup(sock->socket_fd, sock->socket_fd);
-            break;
-        }
-        else
-        {
-            // Ensure that the buffer is null-terminated
-            if (buffer[BUFFER_SIZE - 1] != '\0')
-                buffer[BUFFER_SIZE - 1] = '\0';
-        }
+        // Calculate time difference in milliseconds
+        double milliseconds = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
 
-        firstround = 0;
-        totalBytes += bytes_received;
-        printf("Received %d bytes\n", bytes_received); // Add this line for debugging
-        bzero(buffer, BUFFER_SIZE); // needed?
-    }
-
-    // Capture end time
-    end_time = clock();
-    printf("End receiving data\n");
-    printf("Total bytes received: %d\n", totalBytes);
-
-    // Calculate time difference in milliseconds
-    double milliseconds = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
-
-    StrList_insertLast(strList, round, milliseconds, totalBytes / milliseconds);
-    fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, totalBytes / milliseconds);
-    round++;
+        StrList_insertLast(strList, round, milliseconds, totalBytes / milliseconds);
+        fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, totalBytes / milliseconds);
+        round++;
     } while (strstr(buffer, "Exit\n") == NULL);
 
     // Print statistics

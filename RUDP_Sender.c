@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 5 || strcmp(argv[1], "-ip") != 0 || strcmp(argv[3], "-p") != 0)
     {
-        printf("Invalid arguments\n");
+        printf("Usage: %s -ip <server_ip> -p <port>\n", argv[0]);
         return 1;
     }
 
@@ -54,34 +54,23 @@ int main(int argc, char *argv[])
     }
     printf("Generated %d bytes of random data\n", size);
 
-    // The variable to store the socket file descriptor.
-    RUDP_Socket *sock = NULL;
-
-    // The variable to store the server's address.
-    struct sockaddr_in server;
-
-    // Create a timeval struct to store the maximum wait time for the recvfrom(2) call.
-    struct timeval tv = {MAX_WAIT_TIME, 0};
-
-    // Reset the server structure to zeros.
-    memset(&server, 0, sizeof(server));
-
     // Try to create a UDP socket (IPv4, datagram-based, default protocol).
-    sock = rudp_socket(false, 0);
-    if (sock == NULL)
+    int sock = rudp_socket();
+    if (sock == -1)
     {
         perror("rudp_socket() failed");
         return 1;
     }
-    printf("Created a RUDP socket\n");
-    
-    if (rudp_connect(sock, argv[2], atoi(argv[4])) == 0)
+    printf("Created an RUDP socket\n");
+
+    if (rudp_connect(sock, argv[2], atoi(argv[4])) <= 0)
     {
         perror("rudp_connect() failed");
         rudp_close(sock);
+        free(message);
         return 1;
     }
-    fprintf(stdout, "Connected to server at %s:%s\n", argv[2], argv[4]);
+    printf("Connected to server at %s:%s\n", argv[2], argv[4]);
 
     char again = 'y';
     while (again == 'y')
@@ -89,26 +78,16 @@ int main(int argc, char *argv[])
         // Send the data.
         int total_bytes_sent = 0;
         int remaining_bytes = size;
-    
-        while (remaining_bytes > 0)
+        if (rudp_send(sock, message, size) <= 0)
         {
-            int bytes_sent = rudp_send(sock, message + total_bytes_sent, BUFFER_SIZE);
-            if (bytes_sent == -1)
-            {
-                perror("rudp_send() failed");
-                rudp_close(sock);
-                free(message);
-                return 1;
-            }
-            total_bytes_sent += bytes_sent;
-            remaining_bytes -= bytes_sent;
-            printf("Sent %d bytes\n", bytes_sent); // Add this line for debugging
+            perror("rudp_send() failed");
+            rudp_close(sock);
+            free(message);
+            return 1;
         }
-    
         printf("Sent %d bytes to the server!\n", total_bytes_sent);
         printf("Do you want to send the message again? (y/n): ");
         scanf(" %c", &again);
-    
         // Reset total_bytes_sent and remaining_bytes for the next iteration
         total_bytes_sent = 0;
         remaining_bytes = size;
@@ -116,11 +95,9 @@ int main(int argc, char *argv[])
 
     // The loop completed successfully, and all bytes were sent.
     fprintf(stdout, "Client finished!\n");
-
     // Close the socket UDP socket.
     rudp_close(sock);
+    printf("Closed the RUDP socket\n");
     free(message);
-
-    // Return 0 to indicate that the client ran successfully.
     return 0;
 }
