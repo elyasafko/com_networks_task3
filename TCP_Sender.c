@@ -65,7 +65,6 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    // need to fix the TCP_CONGESTION
     if (strcmp(argv[6], "reno") == 0) 
     {
            printf("Setting TCP to Reno\n");
