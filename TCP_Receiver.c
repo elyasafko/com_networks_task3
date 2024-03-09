@@ -189,33 +189,40 @@ int main(int argc, char *argv[])
 
         // create a list to store the data
         int round = 1;
+        int exitflag = 0;
 
-        do
+        while (exitflag == 0)
         {
             // Clear the buffer
             memset(buffer, 0, sizeof(buffer));
 
-            // Capture start time
             clock_t start_time, end_time;
-            //gettimeofday(&start_time, NULL);
 
             // Receive data from client in chunks
             int bytes_received;
             int firstround = 1;
             int totalBytes = 0;
-            while ((bytes_received = recv(clientSocket, buffer, sizeof(buffer), 0)) > 0) 
+            int finishflag = 0;
+            exitflag = 0;
+
+            while ((bytes_received = recv(clientSocket, buffer, sizeof(buffer), 0)) > 0 && finishflag == 0 && exitflag == 0)
             {
                 if (firstround)
                 {
                     start_time = clock();
                     printf("start receiving data\n");
                 }
-                if ((strstr(buffer, "Finish\n") != NULL) || (strstr(buffer, "Exit\n") != NULL))
+                if ((strstr(buffer, "Finish\n") != NULL))
                 {
                     printf("Received finish command. Exiting loop.\n");
                     break;
+                } 
+                if ((strstr(buffer, "Exit\n") != NULL))
+                {
+                    printf("Received exit command. Exiting loop.\n");
+                    exitflag = 1;
+                    break;
                 }
-
                 // Handle received data
                 if (bytes_received < 0) 
                 {
@@ -233,25 +240,23 @@ int main(int argc, char *argv[])
                     if (buffer[BUFFER_SIZE - 1] != '\0')
                         buffer[BUFFER_SIZE - 1] = '\0';
                 }
-
                 firstround = 0;
                 totalBytes += bytes_received;
-                bzero(buffer, BUFFER_SIZE); // needed?
+                bzero(buffer, BUFFER_SIZE);
             }
             // Capture end time
             end_time = clock();
-            printf("end receiving data\n");
-            printf("Total bytes received: %d\n", totalBytes);
-
             // Calculate time difference in milliseconds
             double milliseconds = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
-
-
-
-            StrList_insertLast(list, round, milliseconds, bytes_received / milliseconds);
-            fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, bytes_received / milliseconds);
-            round++;
-        } while (strstr(buffer, "Exit\n") == NULL);
+            if (exitflag == 0)
+            {
+                printf("end receiving data\n");
+                printf("Total bytes received: %d\n", totalBytes);
+                StrList_insertLast(list, round, milliseconds, bytes_received / milliseconds);
+                fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, bytes_received / milliseconds);
+                round++;
+            }
+        }
 
 
         // Send back a message to the client.
@@ -277,22 +282,20 @@ int main(int argc, char *argv[])
     printf("-----------------------------\n");
     printf("Stats:\n");
     printf("CC Algorithm: %s\n", argv[4]);
-    printf("Number of runs: %zu\n", list->_size-1);
+    printf("Number of runs: %zu\n", list->_size);
     Node* current = list->_head; // Use a temporary pointer to traverse the list
 
-    for (int i = 0; i < list->_size-1; i++)
+    for (int i = 0; i < list->_size; i++)
     {
         printf("Run #%d Data: Time: %f ms, Speed: %f MB/s\n", current->_run, current->_time, current->_speed);
         current = current->_next;
     }
-
     // Reset temporary pointer to head for calculating averages
     current = list->_head;
-
     float totalTime = 0.0;
     float totalSpeed = 0.0;
 
-    for (int i = 0; i < list->_size-1; i++)
+    for (int i = 0; i < list->_size; i++)
     {
         totalTime += current->_time;
         totalSpeed += current->_speed;
@@ -305,5 +308,4 @@ int main(int argc, char *argv[])
 
     StrList_free(list);
     return 0;
-
 }
