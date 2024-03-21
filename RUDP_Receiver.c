@@ -132,7 +132,7 @@ int main(int argc, char* argv[])
     printf("RUDP Receiver\n");
 
     // Create a UDP socket
-    int sock = rudp_socket(true, port);
+    int sock = rudp_socket();
     if (sock == -1)
     {
         perror("Failed to create socket");
@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
     printf("Socket created\n");
 
     // Accept incoming connection requests
-    if (rudp_accept(sock) == 0)
+    if (rudp_accept(sock,port) == 0)
     {
         perror("Failed to accept connection");
         rudp_close(sock);
