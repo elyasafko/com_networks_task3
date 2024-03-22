@@ -9,10 +9,6 @@
 #include <time.h>
 #include "RUDP_API.h"
 
-#define BUFFER_SIZE MSG_BUFFER_SIZE
-#define MAX_WAIT_TIME 2
-#define EXIT_MSG "exit"
-#define FILE_SIZE (1024 * 1024 * 2)
 
 char *util_generate_random_data(unsigned int size)
 {
@@ -42,7 +38,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    char buffer[BUFFER_SIZE] = {0};
+    char buffer[MSG_BUFFER_SIZE] = {0};
 
     // Generate some random data.
     unsigned int size = FILE_SIZE;

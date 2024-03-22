@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <sys/time.h>
+#include <errno.h>
+
 
 int rudp_socket() 
 {
@@ -18,18 +20,21 @@ int rudp_socket()
     return sock;
 }
 
-
 int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
 {
     // Add print statements for better debugging
     printf("Connecting to %s:%u...\n", dest_ip, dest_port);
 
-    // setup a timeout for the socket
-    if (set_timeout(sock, TIMEOUT) == -1)
+    struct timeval timeout;
+    timeout.tv_sec = TIMEOUT;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) 
     {
-        perror("set_timeout failed");
+        printf("Error setting timeout for socket");
         return -1;
     }
+    printf("Timeout set to %d seconds\n", TIMEOUT);
 
     // Setup the server address structure.
     struct sockaddr_in serverAddress; // server address
@@ -90,12 +95,14 @@ int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
             {
                 perror("recvfrom failed");
                 free(recv_packet);
+                free(packet);
                 return -1;
             }
 
             if (recv_packet->flags.SYN && recv_packet->flags.ACK)
             {
                 free(recv_packet);
+                free(packet);
                 printf("Connected\n");
                 return 1;
             }
@@ -108,20 +115,17 @@ int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
             if (inner_total_tries  == RETRY)
             {
                 free(recv_packet);
+                free(packet);
             }
         }
         printf("Could not receive SYN-ACK packet\n");
-        return 0;
         total_tries++;
     }
 
     printf("Could not send SYN packet after %d retries\n", RETRY);
     free(packet); // free allocated memory
     return -1;
-
 }
-
-
 
 int rudp_accept(int sock, int port)
 {
@@ -209,10 +213,8 @@ int rudp_accept(int sock, int port)
     return 0;
 }
 
-
-int rudp_recv(int sock, void *buffer, unsigned int buffer_size)
+int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strList)
 {
-    int sq_num = 0;
     RUDP_Packet *packet = (RUDP_Packet *)malloc(sizeof(RUDP_Packet));
     if (packet == NULL)
     {
@@ -221,7 +223,19 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size)
     }
     memset(packet, 0, sizeof(RUDP_Packet));
 
-    int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, NULL, 0);
+    // Receive packet with error handling and timeout
+    struct timeval timeout;
+    timeout.tv_sec = TIMEOUT; // Set timeout in seconds
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout)) < 0)
+    {
+        perror("setsockopt failed");
+        free(packet);
+        return -1;
+    }
+
+    int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, NULL, NULL);
     if (recv_result == -1)
     {
         perror("recvfrom failed");
@@ -251,16 +265,17 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size)
         return 0;
     }
 
+    int sq_num = 0; // Initialize sequence number
+
     if (packet->seq_num == sq_num)
     {
-        if (packet->seq_num == 0 && packet->flags.DATA == 1)
-            set_timeout(sock, TIMEOUT * 10);
-
         int result = receive_data_packet(sock, buffer, packet, &sq_num);
+        free(packet);
         return result;
     }
     else if (packet->flags.DATA == 1)
     {
+        free(packet);
         return 0;
     }
 
@@ -268,9 +283,11 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size)
     {
         printf("Received close request\n");
         int result = handle_fin_packet(sock, packet);
+        free(packet);
         return result;
     }
 
+    free(packet);
     return 0;
 }
 
@@ -327,7 +344,6 @@ int handle_fin_packet(int sock, RUDP_Packet *packet)
     return -2;
 }
 
-
 int rudp_send(int sock, void *buffer, unsigned int buffer_size)
 {
     int id_packet = 0; // id of the packet
@@ -343,7 +359,8 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
     for (int i = 0; i < packet_amount; i++) // for each packet to send
     {
         RUDP_Packet *packet = malloc(sizeof(RUDP_Packet)); // allocate memory for the packet
-        if (packet == NULL) {
+        if (packet == NULL) 
+        {
             perror("malloc failed");
             free(recv_packet);
             return -1;
@@ -354,7 +371,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
         packet->seq_num = id_packet; // set the sequence number
 
         // Set the FIN flag for the last packet
-        if (i == packet_amount - 1 && buffer_size % MSG_BUFFER_SIZE == 0)
+        if (i == packet_amount - 1)
         {
             packet->flags.FIN = 1;
         }
@@ -386,7 +403,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
                 ssize_t recv_result = recvfrom(sock, recv_packet, sizeof(RUDP_Packet), 0, NULL, 0); // receive the packet
                 if (recv_result == -1) // if the receive failed
                 {
-                    perror("recvfrom failed");
+                    printf("recvfrom failed");
                     free(packet);
                     free(recv_packet);
                     return -1;
@@ -414,28 +431,6 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
 
     free(recv_packet); // free the received packet
     return 1; // return success
-}
-
-int rudp_disconnect(int sock)
-{
-    RUDP_Packet *disconnect_pk = (RUDP_Packet *)malloc(sizeof(RUDP_Packet));
-    memset(disconnect_pk, 0, sizeof(RUDP_Packet));
-    disconnect_pk->flags.FIN = 1;
-
-    strncpy(disconnect_pk->data, "Disconnect", sizeof(disconnect_pk->data) - 1);
-
-    disconnect_pk->checksum = checksum(disconnect_pk->data, strlen(disconnect_pk->data) + 1);
-
-   while (wait_for_ack(sock, 0, clock(), TIMEOUT) == -1) 
-   {
-        if (send_fin_and_wait_ack(sock, disconnect_pk) == -1) 
-        {
-            free(disconnect_pk);
-            return -1;
-        }
-    }
-    free(disconnect_pk);
-    return 0;
 }
 
 int rudp_close(int sock)
@@ -472,26 +467,6 @@ int rudp_close(int sock)
     return 0;  // or return 1; depending on your convention
 }
 
-int set_timeout(int sock, int time_sec)
-{
-    if (time_sec <= 0) 
-    {
-        fprintf(stderr, "Error: Invalid timeout value\n");
-        return -1;
-    }
-
-    struct timeval timeout;
-    timeout.tv_sec = time_sec;
-    timeout.tv_usec = 0;
-
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) 
-    {
-        printf("Error setting timeout for socket");
-        return -1;
-    }
-    printf("Timeout set to %d seconds\n", time_sec);
-    return 0;  // or return 1; depending on your convention
-}
 
 unsigned short int checksum(void *data, unsigned int bytes) 
 {
@@ -511,32 +486,6 @@ unsigned short int checksum(void *data, unsigned int bytes)
         total_sum = (total_sum & 0xFFFF) + (total_sum >> 16);
 
     return (~((unsigned short int)total_sum));
-}
-
-int wait_for_ack(int socket, int seq_num, clock_t start_time, int timeout) 
-{
-    RUDP_Packet *packetReply = malloc(sizeof(RUDP_Packet));
-
-    // Calculate the expiration time (start_time + timeout seconds)
-    clock_t expiration_time = start_time + timeout * CLOCKS_PER_SEC;
-
-    while (clock() < expiration_time) 
-    {
-        int recvLen = recvfrom(socket, packetReply, sizeof(RUDP_Packet) - 1, 0, NULL, 0);
-        if (recvLen == -1) 
-        {
-            free(packetReply);
-            return -1;
-        }
-
-        if (packetReply->seq_num == seq_num && packetReply->flags.ACK == 1) 
-        {
-            free(packetReply);
-            return 1;
-        }
-    }
-    free(packetReply);
-    return -1;
 }
 
 int send_ack(int socket, RUDP_Packet *packet) 
@@ -571,14 +520,129 @@ int send_ack(int socket, RUDP_Packet *packet)
     return 1;
 }
 
-int send_fin_and_wait_ack(int sock, RUDP_Packet *packet) 
+int wait_for_ack(int socket, int seq_num, clock_t start_time, int timeout) 
 {
-    int sendResult = sendto(sock, packet, sizeof(RUDP_Packet), 0, NULL, 0);
-    if (sendResult == -1) 
+    RUDP_Packet *packetReply = malloc(sizeof(RUDP_Packet));
+
+    // Calculate the expiration time (start_time + timeout seconds)
+    clock_t expiration_time = start_time + timeout * CLOCKS_PER_SEC;
+
+    while (clock() < expiration_time) 
     {
-        perror("sendto failed");
-        return -1;
+        int recvLen = recvfrom(socket, packetReply, sizeof(RUDP_Packet) - 1, 0, NULL, 0);
+        if (recvLen == -1) 
+        {
+            free(packetReply);
+            return -1;
+        }
+
+        if (packetReply->seq_num == seq_num && packetReply->flags.ACK == 1) 
+        {
+            free(packetReply);
+            return 1;
+        }
+    }
+    free(packetReply);
+    return -1;
+}
+
+
+
+
+// ************ Linked List **************
+
+Node *Node_alloc(int run, double time, double speed, Node *next)
+{
+    Node *p = (Node *)malloc(sizeof(Node));
+    if (p == NULL)
+    {
+        return NULL;
+    }
+    p->_run = run;
+    p->_time = time;
+    p->_speed = speed;
+    p->_next = next;
+    return p;
+}
+
+void Node_free(Node *node)
+{
+    free(node);
+}
+
+StrList *StrList_alloc()
+{
+    StrList *p = (StrList *)malloc(sizeof(StrList));
+    p->_head = NULL;
+    p->_size = 0;
+    return p;
+}
+
+void StrList_free(StrList *strList)
+{
+    if (strList == NULL)
+        return;
+    Node *p1 = strList->_head;
+    Node *p2;
+    while (p1)
+    {
+        p2 = p1;
+        p1 = p1->_next;
+        Node_free(p2);
+    }
+    free(strList);
+}
+
+size_t StrList_size(const StrList *strList)
+{
+    return strList->_size;
+}
+
+void StrList_insertLast(StrList *strList, int run, double time, double speed)
+{
+    Node *p = Node_alloc(run, time, speed, NULL);
+    if (strList->_head == NULL)
+    {
+        strList->_head = p;
+    }
+    else
+    {
+        Node *q = strList->_head;
+        while (q->_next)
+        {
+            q = q->_next;
+        }
+        q->_next = p;
+    }
+    strList->_size++;
+}
+
+void print_stats(const StrList *strList)
+{
+    printf("-----------------------------\n");
+    printf("Stats:\n");
+    printf("Number of runs: %zu\n", strList->_size);
+    Node *current = strList->_head;
+
+    for (size_t i = 0; i < strList->_size; i++)
+    {
+        printf("Run #%d Data: Time: %f ms, Speed: %f MB/s\n", current->_run, current->_time, current->_speed);
+        current = current->_next;
     }
 
-    return wait_for_ack(sock, packet->seq_num, clock(), TIMEOUT);
+    current = strList->_head;
+
+    double totalTime = 0.0;
+    double totalSpeed = 0.0;
+
+    for (size_t i = 0; i < strList->_size; i++)
+    {
+        totalTime += current->_time;
+        totalSpeed += current->_speed;
+        current = current->_next;
+    }
+
+    printf("Average Time: %f ms\n", totalTime / strList->_size);
+    printf("Average Speed: %f MB/s\n", totalSpeed / strList->_size);
+    printf("-----------------------------\n");
 }

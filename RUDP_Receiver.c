@@ -6,118 +6,6 @@
 #include "RUDP_API.h"
 #include <time.h>
 
-#define BUFFER_SIZE MSG_BUFFER_SIZE
-
-typedef struct _Node
-{
-    int _run;
-    double _time;
-    double _speed;
-    struct _Node *_next;
-} Node;
-
-typedef struct _StrList
-{
-    Node *_head;
-    size_t _size;
-} StrList;
-
-Node *Node_alloc(int run, double time, double speed, Node *next)
-{
-    Node *p = (Node *)malloc(sizeof(Node));
-    if (p == NULL)
-    {
-        return NULL;
-    }
-    p->_run = run;
-    p->_time = time;
-    p->_speed = speed;
-    p->_next = next;
-    return p;
-}
-
-void Node_free(Node *node)
-{
-    free(node);
-}
-
-StrList *StrList_alloc()
-{
-    StrList *p = (StrList *)malloc(sizeof(StrList));
-    p->_head = NULL;
-    p->_size = 0;
-    return p;
-}
-
-void StrList_free(StrList *strList)
-{
-    if (strList == NULL)
-        return;
-    Node *p1 = strList->_head;
-    Node *p2;
-    while (p1)
-    {
-        p2 = p1;
-        p1 = p1->_next;
-        Node_free(p2);
-    }
-    free(strList);
-}
-
-size_t StrList_size(const StrList *strList)
-{
-    return strList->_size;
-}
-
-void StrList_insertLast(StrList *strList, int run, double time, double speed)
-{
-    Node *p = Node_alloc(run, time, speed, NULL);
-    if (strList->_head == NULL)
-    {
-        strList->_head = p;
-    }
-    else
-    {
-        Node *q = strList->_head;
-        while (q->_next)
-        {
-            q = q->_next;
-        }
-        q->_next = p;
-    }
-    strList->_size++;
-}
-
-void print_stats(const StrList *strList)
-{
-    printf("-----------------------------\n");
-    printf("Stats:\n");
-    printf("Number of runs: %zu\n", strList->_size);
-    Node *current = strList->_head;
-
-    for (size_t i = 0; i < strList->_size; i++)
-    {
-        printf("Run #%d Data: Time: %f ms, Speed: %f MB/s\n", current->_run, current->_time, current->_speed);
-        current = current->_next;
-    }
-
-    current = strList->_head;
-
-    double totalTime = 0.0;
-    double totalSpeed = 0.0;
-
-    for (size_t i = 0; i < strList->_size; i++)
-    {
-        totalTime += current->_time;
-        totalSpeed += current->_speed;
-        current = current->_next;
-    }
-
-    printf("Average Time: %f ms\n", totalTime / strList->_size);
-    printf("Average Speed: %f MB/s\n", totalSpeed / strList->_size);
-    printf("-----------------------------\n");
-}
-
 int main(int argc, char* argv[])
 {
     if (argc != 3 || strcmp(argv[1], "-p") != 0)
@@ -149,7 +37,7 @@ int main(int argc, char* argv[])
     }
     printf("Connection accepted\n");
 
-    char buffer[BUFFER_SIZE];
+    char buffer[MSG_BUFFER_SIZE];
     int round = 1;
 
     do
@@ -165,7 +53,7 @@ int main(int argc, char* argv[])
         int firstround = 1;
         int totalBytes = 0;
 
-        while ((bytes_received = rudp_recv(sock, buffer, sizeof(buffer))) > 0)
+        while ((bytes_received = rudp_recv(sock, buffer, sizeof(buffer), &strList)) > 0)
         {
             if (firstround)
             {
@@ -196,14 +84,14 @@ int main(int argc, char* argv[])
             else
             {
                 // Ensure that the buffer is null-terminated
-                if (buffer[BUFFER_SIZE - 1] != '\0')
-                    buffer[BUFFER_SIZE - 1] = '\0';
+                if (buffer[MSG_BUFFER_SIZE - 1] != '\0')
+                    buffer[MSG_BUFFER_SIZE - 1] = '\0';
             }
 
             firstround = 0;
             totalBytes += bytes_received;
             printf("Received %d bytes\n", bytes_received); // Add this line for debugging
-            bzero(buffer, BUFFER_SIZE); // needed?
+            bzero(buffer, MSG_BUFFER_SIZE); // needed?
         }
 
         // Capture end time
@@ -221,7 +109,9 @@ int main(int argc, char* argv[])
 
     // Print statistics
     print_stats(strList);
+
     StrList_free(strList);
+
     rudp_close(sock);
 
     return 0;

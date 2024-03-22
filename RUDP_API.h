@@ -33,19 +33,37 @@ typedef struct _RUDP_Packet
 int rudp_socket();
 int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port);
 int rudp_accept(int sock, int port);
-int rudp_recv(int sock, void *buffer, unsigned int buffer_size);
+int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strList);
 int rudp_send(int sock, void *buffer, unsigned int buffer_size);
-int rudp_disconnect(int sock);
 int rudp_close(int sock);
-int set_timeout(int socket, int time);
 int receive_data_packet(int sock, void *buffer, RUDP_Packet *packet, int *sq_num);
-int handle_fin_packet(int sock, RUDP_Packet *packet);
-int send_syn_packet(int sock,struct sockaddr_in serverAddress);
-int receive_syn_ack_packet(int sock,struct sockaddr_in serverAddress);
-int send_fin_and_wait_ack(int sock, RUDP_Packet *packet);
-int send_ack(int socket, RUDP_Packet *packet);
 int wait_for_ack(int socket, int seq_num, clock_t start_time, int timeout);
+int handle_fin_packet(int sock, RUDP_Packet *packet);
+int send_ack(int socket, RUDP_Packet *packet);
 unsigned short int checksum(void *data, unsigned int bytes);
+
+//******************* linked list ****************
+typedef struct _Node
+{
+    int _run;
+    double _time;
+    double _speed;
+    struct _Node *_next;
+} Node;
+
+typedef struct _StrList
+{
+    Node *_head;
+    size_t _size;
+} StrList, *pStrList;
+
+void print_stats(const StrList *strList);
+void StrList_insertLast(StrList *strList, int run, double time, double speed);
+size_t StrList_size(const StrList *strList);
+void StrList_free(StrList *strList);
+StrList *StrList_alloc();
+void Node_free(Node *node);
+Node *Node_alloc(int run, double time, double speed, Node *next);
 
 
 #endif
