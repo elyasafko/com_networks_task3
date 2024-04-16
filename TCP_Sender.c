@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 
     if (strcmp(argv[6], "reno") == 0) 
     {
-           printf("Setting TCP to Reno\n");
+        printf("Setting TCP to Reno\n");
         if (setsockopt(sock, IPPROTO_TCP, TCP_CONGESTION, "reno", strlen("reno")) != 0) 
            {
                perror("setsockopt() failed");

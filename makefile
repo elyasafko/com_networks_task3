@@ -30,6 +30,5 @@ RUDP_API.o: RUDP_API.c RUDP_API.h
 	@gcc -c RUDP_API.c
 
 
-
 clean:
 	@rm -f *.o TCP_Receiver TCP_Sender RUDP_Receiver RUDP_Sender

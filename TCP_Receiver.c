@@ -144,9 +144,6 @@ int main(int argc, char *argv[])
     serverAddress.sin_addr.s_addr = INADDR_ANY;
 
 
-    // something  missing here? ip to something - inet pton
-
-
     // Bind the server address to the socket.
     if (bind(listeningSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1) 
     {
