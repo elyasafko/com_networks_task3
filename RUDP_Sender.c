@@ -40,60 +40,55 @@ int main(int argc, char *argv[])
 
     char buffer[MSG_BUFFER_SIZE] = {0};
 
+    printf("Starting RUDP Sender\n\n");
+
     // Generate some random data.
     unsigned int size = FILE_SIZE;
     char *message = util_generate_random_data(size);
     if (message == NULL)
     {
         perror("util_generate_random_data() failed");
-        return -1;
+        return 1;
     }
     printf("Generated %d bytes of random data\n", size);
 
     // Try to create a UDP socket (IPv4, datagram-based, default protocol).
-    int sock = rudp_socket();
+    int sock = udp_socket(argv[2], atoi(argv[4]));
     if (sock == -1)
     {
-        perror("rudp_socket() failed");
+        perror("udp_socket() failed");
         return 1;
     }
-    printf("Created an RUDP socket\n");
-
-    if (rudp_connect(sock, argv[2], atoi(argv[4])) <= 0)
-    {
-        perror("rudp_connect() failed");
-        rudp_close(sock);
-        free(message);
-        return 1;
-    }
-    printf("Connected to server at %s:%s\n", argv[2], argv[4]);
 
     char again = 'y';
     while (again == 'y')
     {
-        // Send the data.
-        int total_bytes_sent = 0;
-        int remaining_bytes = size;
-        if (rudp_send(sock, message, size) <= 0)
-        {
-            perror("rudp_send() failed");
-            rudp_close(sock);
-            free(message);
+        // Create RUDP socket
+        if (rudp_socket(sock) < 0) {
+            close(sock);
             return 1;
         }
-        printf("Sent %d bytes to the server!\n", total_bytes_sent);
+
+        // Send the data.
+        if (rudp_send(sock, message, size) <= 0)
+        {
+            printf("Could not send RUDP message\n");
+            close(sock);
+            return 1;
+        }
+
+        printf("Sent %d bytes to the server!\n\n", size);
         printf("Do you want to send the message again? (y/n): ");
         scanf(" %c", &again);
-        // Reset total_bytes_sent and remaining_bytes for the next iteration
-        total_bytes_sent = 0;
-        remaining_bytes = size;
+    }
+    free(message);
+
+    // Close the socket UDP socket.
+    if (rudp_close(sock, 1) < 0) {
+        close(sock);
+        return 1;
     }
 
-    // The loop completed successfully, and all bytes were sent.
-    fprintf(stdout, "Client finished!\n");
-    // Close the socket UDP socket.
-    rudp_close(sock);
-    printf("Closed the RUDP socket\n");
-    free(message);
+    printf("\nClient finished!\n");
     return 0;
 }

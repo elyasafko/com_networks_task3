@@ -15,33 +15,34 @@ int main(int argc, char* argv[])
     }
 
     int port = atoi(argv[2]);
-    StrList* strList = StrList_alloc();
 
-    printf("RUDP Receiver\n");
+    printf("Starting RUDP Receiver\n\n");
 
     // Create a UDP socket
-    int sock = rudp_socket();
+    int sock = udp_socket(NULL, port);
     if (sock == -1)
     {
-        perror("Failed to create socket");
         return 1;
     }
-    printf("Socket created\n");
 
-    // Accept incoming connection requests
-    if (rudp_accept(sock,port) == 0)
-    {
-        perror("Failed to accept connection");
-        rudp_close(sock);
-        return 1;
-    }
-    printf("Connection accepted\n");
 
     char buffer[MSG_BUFFER_SIZE];
     int round = 1;
+    int done, bytes_received, totalBytes;
+    StrList* strList = StrList_alloc();
 
     do
     {
+        done = 0;
+
+        // Accept incoming connection requests
+        if (rudp_accept(sock, port, &done) < 0)
+        {
+            perror("Failed to accept connection");
+            rudp_close(sock, 0);
+            return 1;
+        }
+
         // Clear the buffer
         memset(buffer, 0, sizeof(buffer));
 
@@ -49,70 +50,41 @@ int main(int argc, char* argv[])
         clock_t start_time, end_time;
         
         // Receive data from the client in chunks
-        int bytes_received;
         int firstround = 1;
-        int totalBytes = 0;
 
-        while ((bytes_received = rudp_recv(sock, buffer, sizeof(buffer), &strList)) > 0)
+        while ((done == 0) && ((bytes_received = rudp_recv(sock, buffer, sizeof(buffer), &strList, &done)) >= 0))
         {
             if (firstround)
             {
+                firstround = 0;
+                totalBytes = 0;
                 start_time = clock();
-                printf("Start receiving data\n");
             }
-
-            if ((strstr(buffer, "Finish\n") != NULL) || (strstr(buffer, "Exit\n") != NULL))
-            {
-                printf("Received finish command. Exiting loop.\n");
-                break;
-            }
-
-            // Handle received data
-            if (bytes_received < 0)
-            {
-                perror("rudp_recv()");
-                close(sock);
-                StrList_free(strList);
-                return 1;
-            }
-            else if (bytes_received == 0)
-            {
-                fprintf(stdout, "Client disconnected\n");
-                close(sock);
-                break;
-            }
-            else
-            {
-                // Ensure that the buffer is null-terminated
-                if (buffer[MSG_BUFFER_SIZE - 1] != '\0')
-                    buffer[MSG_BUFFER_SIZE - 1] = '\0';
-            }
-
-            firstround = 0;
             totalBytes += bytes_received;
-            printf("Received %d bytes\n", bytes_received); // Add this line for debugging
-            bzero(buffer, MSG_BUFFER_SIZE); // needed?
+            printf("Got %d bytes of data.  Total %d bytes\n", bytes_received, totalBytes);
         }
 
-        // Capture end time
-        end_time = clock();
-        printf("End receiving data\n");
-        printf("Total bytes received: %d\n", totalBytes);
+        if (done > 0) {
+            // Capture end time
+            end_time = clock();
+            printf("End receiving data\n");
 
-        // Calculate time difference in milliseconds
-        double milliseconds = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
+            // Calculate time difference in milliseconds
+            double milliseconds = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
+            StrList_insertLast(strList, round, milliseconds, totalBytes / milliseconds);
+            printf("Run #%d Data: Time: %fms Speed: %fMB/s\n\n", round, milliseconds, totalBytes / milliseconds);
+            round++;
+        }
+    } while (done > 0);
 
-        StrList_insertLast(strList, round, milliseconds, totalBytes / milliseconds);
-        fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, totalBytes / milliseconds);
-        round++;
-    } while (strstr(buffer, "Exit\n") == NULL);
+    rudp_close(sock, 0);
 
     // Print statistics
     print_stats(strList);
 
     StrList_free(strList);
 
-    rudp_close(sock);
+    printf("\nReceiver finished!\n");
 
     return 0;
 }

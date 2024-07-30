@@ -11,36 +11,27 @@
 #define MSG_BUFFER_SIZE 16384
 #define FILE_SIZE (1024 * 1024 * 2)
 #define RETRY 3
-#define TIMEOUT 5
+#define TIMEOUT 30
 
 typedef struct _RUDP_Flags 
 {
-    unsigned int SYN : 1;
-    unsigned int ACK : 1;
-    unsigned int DATA : 1;
-    unsigned int FIN : 1;
+    unsigned char SYN : 1;
+    unsigned char ACK : 1;
+    unsigned char DATA : 1;
+    unsigned char FIN : 1;
 } RUDP_flags;
 
 typedef struct _RUDP_Packet 
 {
-    RUDP_flags flags;
-    unsigned int length;
-    unsigned int checksum;
-    unsigned int seq_num;
+    union {
+        RUDP_flags flags;
+        unsigned char all_flags;
+    };
+    unsigned short int length;
+    unsigned short int checksum;
+    unsigned short int seq_num;
     char data[MSG_BUFFER_SIZE];
 } RUDP_Packet;
-
-int rudp_socket();
-int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port);
-int rudp_accept(int sock, int port);
-int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strList);
-int rudp_send(int sock, void *buffer, unsigned int buffer_size);
-int rudp_close(int sock);
-int receive_data_packet(int sock, void *buffer, RUDP_Packet *packet, int *sq_num);
-int wait_for_ack(int socket, int seq_num, clock_t start_time, int timeout);
-int handle_fin_packet(int sock, RUDP_Packet *packet);
-int send_ack(int socket, RUDP_Packet *packet);
-unsigned short int checksum(void *data, unsigned int bytes);
 
 //******************* linked list ****************
 typedef struct _Node
@@ -56,6 +47,19 @@ typedef struct _StrList
     Node *_head;
     size_t _size;
 } StrList, *pStrList;
+
+/* Opens the socket. Sender: connect; Reciever: bind. */
+int udp_socket(const char *dest_ip, unsigned short int dest_port);
+/* Sender: sends SYN, waits for SYN+ACK */
+int rudp_socket(int sock);
+/* Reciever: connect + gets SYN+ACK or flags=0xFF for USP termination */
+int rudp_accept(int sock, int port, int *done);
+int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strList, int *done);
+int rudp_send(int sock, void *buffer, unsigned int buffer_size);
+int rudp_close(int sock, int send);
+int receive_data_packet(int sock, void *buffer, RUDP_Packet *packet, int *sq_num);
+int send_ack(int socket, RUDP_Packet *packet);
+unsigned short int checksum(void *data, unsigned int bytes);
 
 void print_stats(const StrList *strList);
 void StrList_insertLast(StrList *strList, int run, double time, double speed);

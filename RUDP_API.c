@@ -7,23 +7,39 @@
 #include <time.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <stddef.h>
 
+int seq_num; // id of the expected packet
 
-int rudp_socket() 
+void rudp_dump_data(RUDP_Packet *packet)
 {
+    for (int q=0; q<offsetof(RUDP_Packet, data)+32; q+=16)
+        printf("0x%04X: %08X %08X %08X %08X\n", q,
+                *(int *)((char *)packet + q),
+                *(int *)((char *)packet + q + 4),
+                *(int *)((char *)packet + q + 8),
+                *(int *)((char *)packet + q + 12));
+}
+
+#define rudp_dump_headers(x, p) \
+    printf("%03d: " x " SYN %d ACK %d DATA %d FIN %d length %05d checksum %04X seq_num %d\n", __LINE__, p->flags.SYN, p->flags.ACK, p->flags.DATA, p->flags.FIN, p->length, p->checksum, p->seq_num)
+
+int udp_socket(const char *dest_ip, unsigned short int dest_port) 
+{
+    if (dest_ip == NULL) {
+        printf("Setting up UDP at port %u...\n", dest_port);
+    }
+    else
+    {
+        printf("Setting up UDP at %s:%u...\n", dest_ip, dest_port);
+    }
+
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock == -1) 
     {
-        perror("Error creating RUDP socket");
+        perror("Error creating UDP socket");
         return -1;
     }
-    return sock;
-}
-
-int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
-{
-    // Add print statements for better debugging
-    printf("Connecting to %s:%u...\n", dest_ip, dest_port);
 
     struct timeval timeout;
     timeout.tv_sec = TIMEOUT;
@@ -41,20 +57,39 @@ int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
     memset(&serverAddress, 0, sizeof(serverAddress)); // zero out the structure
     serverAddress.sin_family = AF_INET; // IPv4 address family
     serverAddress.sin_port = htons(dest_port); // server port
-    int rval = inet_pton(AF_INET, dest_ip, &serverAddress.sin_addr); // convert IP address to network address
-    if (rval <= 0) // if the conversion failed
+    if (dest_ip)
     {
-        perror("inet_pton() failed");
-        return -1;
+        int rval = inet_pton(AF_INET, dest_ip, &serverAddress.sin_addr); // convert IP address to network address
+        if (rval <= 0) // if the conversion failed
+        {
+            perror("inet_pton() failed");
+            return -1;
+        }
+
+        // connect to the server
+        if (connect(sock, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1)
+        {
+            perror("connect failed");
+            return -1;
+        }
+    }
+    else
+    {
+        // bind the socket to the server address
+        if (bind(sock, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1) 
+        {
+            perror("bind() failed");
+            close(sock);
+            return -1;
+        }
     }
 
-    // connect to the server
-    if (connect(sock, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1)
-    {
-        perror("connect failed");
-        return -1;
-    }
+    printf("UDP socket created for %s:%u...\n\n", inet_ntoa(serverAddress.sin_addr), dest_port);
+    return sock;
+}
 
+int rudp_socket(int sock)
+{
     // send SYN message
     RUDP_Packet *packet = (RUDP_Packet *)malloc(sizeof(RUDP_Packet));
     if (packet == NULL)
@@ -64,13 +99,15 @@ int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
     }
     memset(packet, 0, sizeof(RUDP_Packet)); // zero out the packet
     packet->flags.SYN = 1; // set the SYN flag
+    packet->seq_num = seq_num = 0;
+    packet->checksum = checksum(packet->data, packet->length);
 
     int total_tries = 0; // total number of tries
 
     while (total_tries < RETRY) // while the total number of tries is less than the maximum number of tries
     {
-        printf("Sending SYN packet..."); // print the number of tries
-        int send_result = sendto(sock, packet, sizeof(RUDP_Packet), 0, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+        rudp_dump_headers("OUT", packet);
+        int send_result = sendto(sock, packet, sizeof(RUDP_Packet), 0, NULL, 0);
         if (send_result == -1)
         {
             perror("sendto failed");
@@ -89,8 +126,8 @@ int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
                 return -1;
             }
             memset(recv_packet, 0, sizeof(RUDP_Packet));
-            socklen_t serverAddrLen = sizeof(serverAddress);
-            int recv_result = recvfrom(sock, recv_packet, sizeof(RUDP_Packet), 0, (struct sockaddr *)&serverAddress, &serverAddrLen);
+            printf("%d: Waiting for RUDP socket [seq_num %d]\n", __LINE__, seq_num);
+            int recv_result = recvfrom(sock, recv_packet, sizeof(RUDP_Packet), 0, NULL, NULL);
             if (recv_result == -1)
             {
                 perror("recvfrom failed");
@@ -98,54 +135,32 @@ int rudp_connect(int sock, const char *dest_ip, unsigned short int dest_port)
                 free(packet);
                 return -1;
             }
+            rudp_dump_headers("IN ", recv_packet);
 
             if (recv_packet->flags.SYN && recv_packet->flags.ACK)
             {
                 free(recv_packet);
                 free(packet);
-                printf("Connected\n");
-                return 1;
+                printf("RUDP connected\n");
+                return 0;
             }
-            else
-            {
-                printf("Received wrong packet when trying to connect\n");
-            }
+            printf("Received wrong packet when trying to connect\n");
 
-            inner_total_tries ++;
-            if (inner_total_tries  == RETRY)
-            {
-                free(recv_packet);
-                free(packet);
-            }
+            inner_total_tries++;
+            free(recv_packet);
         }
         printf("Could not receive SYN-ACK packet\n");
         total_tries++;
     }
 
-    printf("Could not send SYN packet after %d retries\n", RETRY);
+    printf("Could not establish RUDP socket after %d retries\n", RETRY);
     free(packet); // free allocated memory
+
     return -1;
 }
 
-int rudp_accept(int sock, int port)
+int rudp_accept(int sock, int port, int *done)
 {
-    printf("Waiting for connection...\n");
-
-    // Setup the server address structure.
-    struct sockaddr_in serverAddress;
-    memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    // bind the socket to the server address
-    if (bind(sock, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1) 
-    {
-        perror("bind() failed");
-        close(sock);
-        return -1;
-    }
-
     // Setup the client address structure.
     struct sockaddr_in clientAddress; // client address
     memset(&clientAddress, 0, sizeof(clientAddress)); // zero out the structure
@@ -160,12 +175,21 @@ int rudp_accept(int sock, int port)
     }
     memset(packet, 0, sizeof(RUDP_Packet)); // zero out the packet
 
+    printf("%d: Waiting for RUDP socket\n", __LINE__);
     int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, (struct sockaddr *)&clientAddress, &clientAddressLength);
     if (recv_result == -1) 
     {
         perror("recvfrom() failed");
         free(packet);
         return -1;
+    }
+    rudp_dump_headers("IN ", packet);
+
+    if (packet->all_flags == 0xFF)
+    {
+        *done = -1;
+        free(packet);
+        return 0;
     }
 
     if (connect(sock, (struct sockaddr *)&clientAddress, clientAddressLength) == -1) 
@@ -177,7 +201,6 @@ int rudp_accept(int sock, int port)
 
     if (packet->flags.SYN == 1) // if the received packet is a SYN packet
     {
-        printf("Received SYN\n");
         // send SYN-ACK message
         RUDP_Packet *syn_ack_packet = (RUDP_Packet *)malloc(sizeof(RUDP_Packet)); // allocate memory for the packet
         if (syn_ack_packet == NULL) 
@@ -189,7 +212,10 @@ int rudp_accept(int sock, int port)
         memset(syn_ack_packet, 0, sizeof(RUDP_Packet)); // zero out the packet
         syn_ack_packet->flags.SYN = 1; // set the SYN flag
         syn_ack_packet->flags.ACK = 1; // set the ACK flag
+        syn_ack_packet->seq_num = seq_num = packet->seq_num; // Initialize sequence number
+        syn_ack_packet->checksum = checksum(syn_ack_packet->data, syn_ack_packet->length);
 
+        rudp_dump_headers("OUT", syn_ack_packet);
         int send_result = sendto(sock, syn_ack_packet, sizeof(RUDP_Packet), 0, (struct sockaddr *)&clientAddress, clientAddressLength); // send the packet
         if (send_result == -1) // if the send failed
         {
@@ -199,21 +225,22 @@ int rudp_accept(int sock, int port)
             return -1;
         }
 
-        printf("Sent SYN-ACK\n");
         free(packet);
         free(syn_ack_packet);
-        return 1;
-    }
-    else
-    {
-        printf("Received wrong packet when trying to accept\n");
-        free(packet);
+
+        seq_num++;
+        printf("RUDP connected\n");
+        return 0;
     }
 
-    return 0;
+    printf("Received wrong packet when trying to accept\n");
+    free(packet);
+
+    return -1;
 }
 
-int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strList)
+
+int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strList, int *done)
 {
     RUDP_Packet *packet = (RUDP_Packet *)malloc(sizeof(RUDP_Packet));
     if (packet == NULL)
@@ -235,6 +262,7 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strLis
         return -1;
     }
 
+    printf("%d: Waiting for RUDP socket [seq_num %d]\n", __LINE__, seq_num);
     int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, NULL, NULL);
     if (recv_result == -1)
     {
@@ -242,111 +270,59 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strLis
         free(packet);
         return -1;
     }
+    rudp_dump_headers("IN ", packet);
 
     // Check if the packet is corrupted
-    if (checksum(packet->data, sizeof(packet->data)) != packet->checksum)
+    if (checksum(packet->data, packet->length) != packet->checksum)
+    {
+        printf("checksum error: 0x%08X 08%08X\n", checksum(packet->data, packet->length), packet->checksum);
+        free(packet);
+        return 0;
+    }
+
+    // Check if the packet is a SYN packet
+    if (packet->flags.SYN)
+    {
+        seq_num = 0; // Initialize sequence number
+        free(packet);
+        return 0;
+    }
+
+    if (packet->seq_num != seq_num)
     {
         free(packet);
         return -1;
     }
 
     // Send ACK for the received packet
-    if (send_ack(sock, packet) == 0)
+    if (send_ack(sock, packet) < 0)
     {
         free(packet);
         return -1;
     }
 
-    // Check if the packet is a SYN packet
-    if (packet->flags.SYN == 1)
+    if (packet->flags.FIN)
     {
-        free(packet);
-        printf("Received SYN\n");
-        return 0;
+        *done = 1;
     }
 
-    int sq_num = 0; // Initialize sequence number
+    if (packet->flags.DATA)
+    {
+        int len = packet->length;
+        memcpy(buffer, packet->data, len);
+        free(packet);
 
-    if (packet->seq_num == sq_num)
-    {
-        int result = receive_data_packet(sock, buffer, packet, &sq_num);
-        free(packet);
-        return result;
-    }
-    else if (packet->flags.DATA == 1)
-    {
-        free(packet);
-        return 0;
-    }
-
-    if (packet->flags.FIN == 1)
-    {
-        printf("Received close request\n");
-        int result = handle_fin_packet(sock, packet);
-        free(packet);
-        return result;
+        seq_num++;
+        return len;
     }
 
     free(packet);
     return 0;
 }
 
-int receive_data_packet(int sock, void *buffer, RUDP_Packet *packet, int *sq_num)
-{
-    if (packet->flags.FIN == 1 && packet->flags.DATA == 1)
-    { // last packet
-        memcpy(buffer, packet->data, packet->length);
-        (*sq_num)++;
-        return 1;
-    }
-
-    if (packet->flags.DATA == 1)
-    { // data packet
-        memcpy(buffer, packet->data, packet->length);
-        (*sq_num)++;
-        return 1;
-    }
-
-    return 0;
-}
-
-int handle_fin_packet(int sock, RUDP_Packet *packet)
-{
-    // close request
-    // send ACK and wait for TIMEOUT*10 seconds to check if the sender closed
-    printf("Received close request\n");
-    set_timeout(sock, TIMEOUT * 10);
-
-    time_t FIN_send_time = time(NULL);
-    printf("Waiting for close\n");
-
-    while ((double)(time(NULL) - FIN_send_time) < TIMEOUT)
-    {
-        memset(packet, 0, sizeof(RUDP_Packet));
-        int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet) - 1, 0, NULL, 0);
-        if (recv_result == -1)
-        {
-            perror("recvfrom failed");
-            return -1;
-        }
-
-        if (packet->flags.FIN == 1)
-        {
-            if (send_ack(sock, packet) == -1)
-            {
-                return -1;
-            }
-            FIN_send_time = time(NULL);
-        }
-    }
-
-    close(sock);
-    return -2;
-}
-
 int rudp_send(int sock, void *buffer, unsigned int buffer_size)
 {
-    int id_packet = 0; // id of the packet
+    // number of packets to send.  Last data packet must be partial, even if buffer_size==MSG_BUFFER_SIZE.
     int packet_amount = buffer_size / MSG_BUFFER_SIZE + (buffer_size % MSG_BUFFER_SIZE != 0); // number of packets to send
 
     RUDP_Packet *recv_packet = malloc(sizeof(RUDP_Packet)); // allocate memory for the received packet
@@ -368,25 +344,32 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
 
         memset(packet, 0, sizeof(RUDP_Packet)); // zero out the packet
         packet->flags.DATA = 1; // set the DATA flag
-        packet->seq_num = id_packet; // set the sequence number
+        packet->seq_num = ++seq_num; // set the sequence number
 
         // Set the FIN flag for the last packet
         if (i == packet_amount - 1)
         {
             packet->flags.FIN = 1;
+            // set the length of the packet
+            packet->length = buffer_size;
         }
-
-        packet->length = (i == packet_amount - 1) ? buffer_size % MSG_BUFFER_SIZE : MSG_BUFFER_SIZE; // set the length of the packet
+        else
+        {
+            // set the length of the packet
+            packet->length = MSG_BUFFER_SIZE;
+            buffer_size -= packet->length;
+        }
 
         memcpy(packet->data, buffer + i * MSG_BUFFER_SIZE, packet->length); // copy the data to the packet
 
         // Calculate the checksum for the packet
-        packet->checksum = checksum(packet->data, sizeof(packet->data));
+        packet->checksum = checksum(packet->data, packet->length);
 
         int total_tries = 0; // total number of tries
         while (total_tries < RETRY) // while the total number of tries is less than the maximum number of tries
         {
-            ssize_t send_result = sendto(sock, packet, sizeof(RUDP_Packet), 0, NULL, 0); // send the packet
+            rudp_dump_headers("OUT", packet);
+            ssize_t send_result = sendto(sock, packet, offsetof(RUDP_Packet, data) + packet->length, 0, NULL, 0); // send the packet
             if (send_result == -1) // if the send failed
             {
                 perror("sendto failed");
@@ -400,6 +383,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
             do
             {
                 // receive ACK message
+                printf("%d: Waiting for RUDP socket [seq_num %d]\n", __LINE__, seq_num);
                 ssize_t recv_result = recvfrom(sock, recv_packet, sizeof(RUDP_Packet), 0, NULL, 0); // receive the packet
                 if (recv_result == -1) // if the receive failed
                 {
@@ -408,9 +392,15 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
                     free(recv_packet);
                     return -1;
                 }
+                rudp_dump_headers("IN ", recv_packet);
 
-                if (recv_packet->flags.ACK && recv_packet->seq_num == id_packet) // if the received packet is an ACK packet
+                if (recv_packet->flags.ACK && recv_packet->seq_num == seq_num) // if the received packet is an ACK packet
                 {
+                    if (recv_packet->flags.FIN)
+                    {
+                        printf("RUDP disconnected\n");
+                    }
+                    total_tries = RETRY;   // no need to retry
                     break; // break the loop
                 }
             } while ((double)(clock() - start_time) / CLOCKS_PER_SEC < TIMEOUT); // while the time elapsed is less than the timeout
@@ -420,12 +410,11 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
 
         if (total_tries == RETRY) // if the total number of tries is equal to the maximum number of tries
         {
-            printf("Could not send packet %d\n", id_packet); // print an error message
+            printf("Could not send packet %d\n", seq_num); // print an error message;
             free(packet); // free the packet
             return -1; // return an error
         }
 
-        id_packet++; // increment the id of the packet
         free(packet); // free the packet
     }
 
@@ -433,21 +422,20 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
     return 1; // return success
 }
 
-int rudp_close(int sock)
+int rudp_close(int sock, int send)
 {
-    RUDP_Packet *close_pk = (RUDP_Packet *)malloc(sizeof(RUDP_Packet));
-    if (close_pk == NULL)
+    if (send)
     {
-        perror("malloc failed");
-        return -1;
-    }
-    memset(close_pk, 0, sizeof(RUDP_Packet));
-    close_pk->flags.FIN = 1;
-    close_pk->seq_num = -1;
-    close_pk->checksum = checksum(close_pk->data, sizeof(close_pk->data));
+        RUDP_Packet *close_pk = (RUDP_Packet *)malloc(sizeof(RUDP_Packet));
+        if (close_pk == NULL)
+        {
+            perror("malloc failed");
+            return -1;
+        }
+        memset(close_pk, 0, sizeof(RUDP_Packet));
+        close_pk->all_flags = 0xFF;   // special case to signal RUDP connection ended
 
-    do
-    {
+        rudp_dump_headers("OUT", close_pk);
         int sendResult = sendto(sock, close_pk, sizeof(RUDP_Packet), 0, NULL, 0);
         if (sendResult == -1)
         {
@@ -455,16 +443,13 @@ int rudp_close(int sock)
             free(close_pk);
             return -1;
         }
-    } while (wait_for_ack(sock, -1, clock(), TIMEOUT) == -1);
-
-    if (close(sock) == -1)
-    {
         free(close_pk);
-        perror("close failed");
-        return -1;
     }
-    free(close_pk);
-    return 0;  // or return 1; depending on your convention
+
+    close(sock);
+
+    printf("UDP socket closed\n");
+    return 0;
 }
 
 
@@ -480,7 +465,7 @@ unsigned short int checksum(void *data, unsigned int bytes)
     }
     // Add left-over byte, if any
     if (bytes > 0)
-    total_sum += *((unsigned char *)data_pointer);
+        total_sum += *((unsigned char *)data_pointer);
     // Fold 32-bit sum to 16 bits
     while (total_sum >> 16)
         total_sum = (total_sum & 0xFFFF) + (total_sum >> 16);
@@ -494,63 +479,32 @@ int send_ack(int socket, RUDP_Packet *packet)
     if (ack_packet == NULL) 
     {
         perror("malloc failed");
-        return 0;
+        return -1;
     }
     memset(ack_packet, 0, sizeof(RUDP_Packet));
 
     ack_packet->flags.ACK = 1;
     ack_packet->flags.FIN = packet->flags.FIN;
     ack_packet->flags.SYN = packet->flags.SYN;
-    ack_packet->flags.DATA = packet->flags.DATA;
-
     ack_packet->seq_num = packet->seq_num;
+    ack_packet->checksum = checksum(ack_packet->data, ack_packet->length);
 
-    // Update the checksum calculation based on your actual data
-    ack_packet->checksum = checksum(ack_packet->data, sizeof(ack_packet->data));
-
-    int sendResult = sendto(socket, &ack_packet, sizeof(RUDP_Packet), 0, NULL, 0);
-
-    if (sendResult == -1) 
+    rudp_dump_headers("OUT", ack_packet);
+    if (sendto(socket, ack_packet, sizeof(RUDP_Packet), 0, NULL, 0) == -1)
     {
-        printf("sendto failed\n");
+        perror("sendto failed");
         free(ack_packet);
-        return 0;
+        return -1;
+    }
+    if (ack_packet->flags.FIN)
+    {
+        printf("RUDP disconnected\n");
     }
     free(ack_packet);
-    return 1;
+    return 0;
 }
-
-int wait_for_ack(int socket, int seq_num, clock_t start_time, int timeout) 
-{
-    RUDP_Packet *packetReply = malloc(sizeof(RUDP_Packet));
-
-    // Calculate the expiration time (start_time + timeout seconds)
-    clock_t expiration_time = start_time + timeout * CLOCKS_PER_SEC;
-
-    while (clock() < expiration_time) 
-    {
-        int recvLen = recvfrom(socket, packetReply, sizeof(RUDP_Packet) - 1, 0, NULL, 0);
-        if (recvLen == -1) 
-        {
-            free(packetReply);
-            return -1;
-        }
-
-        if (packetReply->seq_num == seq_num && packetReply->flags.ACK == 1) 
-        {
-            free(packetReply);
-            return 1;
-        }
-    }
-    free(packetReply);
-    return -1;
-}
-
-
-
 
 // ************ Linked List **************
-
 Node *Node_alloc(int run, double time, double speed, Node *next)
 {
     Node *p = (Node *)malloc(sizeof(Node));
