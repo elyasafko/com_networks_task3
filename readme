@@ -7,4 +7,4 @@ TCP:
 RUDP:
 ./RUDP_Receiver -p 1234
 
-./RUDP_Sender -ip 0.0.0.0 -p 1234
+./RUDP_Sender -ip 127.0.0.1 -p 1234
