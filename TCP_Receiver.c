@@ -12,74 +12,74 @@
 #define BUFFER_SIZE 65536
 #define MAX_PENDING_CONNECTIONS 1
 
-typedef struct _node 
+typedef struct _node
 {
     int _run;
     double _time;
     double _speed;
-    struct _node * _next;
-}Node;
+    struct _node *_next;
+} Node;
 
 typedef struct _StrList
 {
     Node *_head;
     size_t _size;
-}StrList;
+} StrList;
 
-Node* Node_alloc(int run, double time, double speed, Node* next)
+Node *Node_alloc(int run, double time, double speed, Node *next)
 {
-	Node* p = (Node*)malloc(sizeof(Node));
-    if (p == NULL) 
+    Node *p = (Node *)malloc(sizeof(Node));
+    if (p == NULL)
     {
         return NULL;
     }
     p->_run = run;
     p->_time = time;
     p->_speed = speed;
-	p->_next = next;
-	return p;
+    p->_next = next;
+    return p;
 }
 
-void Node_free(Node* node) 
+void Node_free(Node *node)
 {
-	free(node);
+    free(node);
 }
 
 /*
  * Allocates a new empty StrList.
  * It's the user responsibility to free it with StrList_free.
  */
-StrList* StrList_alloc()
+StrList *StrList_alloc()
 {
-    StrList* p = (StrList*)malloc(sizeof(StrList));
-	p->_head= NULL;
-	p->_size= 0;
-	return p;
+    StrList *p = (StrList *)malloc(sizeof(StrList));
+    p->_head = NULL;
+    p->_size = 0;
+    return p;
 }
-
 
 /*
  * Frees the memory and resources allocated to StrList.
  * If StrList==NULL does nothing (same as free).
  */
-void StrList_free(StrList* StrList)
+void StrList_free(StrList *StrList)
 {
-    if (StrList==NULL) return;
-	Node* p1= StrList->_head;
-	Node* p2;
-	while(p1) 
-	{
-		p2= p1;
-		p1= p1->_next;
-		Node_free(p2);
-	}
-	free(StrList);
+    if (StrList == NULL)
+        return;
+    Node *p1 = StrList->_head;
+    Node *p2;
+    while (p1)
+    {
+        p2 = p1;
+        p1 = p1->_next;
+        Node_free(p2);
+    }
+    free(StrList);
 }
 
 /*
  * Returns the number of elements in the StrList.
  */
-size_t StrList_size(const StrList* StrList)
+size_t StrList_size(const StrList *StrList)
 {
     return StrList->_size;
 }
@@ -87,17 +87,17 @@ size_t StrList_size(const StrList* StrList)
 /*
  * Inserts an element in the end of the StrList.
  */
-void StrList_insertLast(StrList* StrList,int run, double time, double speed)
+void StrList_insertLast(StrList *StrList, int run, double time, double speed)
 {
-    Node* p = Node_alloc(run, time, speed, NULL);
-    if(StrList->_head == NULL) 
+    Node *p = Node_alloc(run, time, speed, NULL);
+    if (StrList->_head == NULL)
     {
         StrList->_head = p;
     }
-    else 
+    else
     {
-        Node* q = StrList->_head;
-        while(q->_next) 
+        Node *q = StrList->_head;
+        while (q->_next)
         {
             q = q->_next;
         }
@@ -106,20 +106,20 @@ void StrList_insertLast(StrList* StrList,int run, double time, double speed)
     StrList->_size++;
 }
 
-void cleanup(int listeningSocket, int clientSocket) 
+void cleanup(int listeningSocket, int clientSocket)
 {
     close(clientSocket);
     close(listeningSocket);
 }
 
-int main(int argc, char *argv[]) 
+int main(int argc, char *argv[])
 {
     char *message = "Exit\n";
     StrList *list = StrList_alloc();
 
     // Create a socket.
     int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (listeningSocket == -1) 
+    if (listeningSocket == -1)
     {
         perror("Could not create listening socket");
         return -1;
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
 
     // Set the SO_REUSEADDR option.
     int enableReuse = 1;
-    if (setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(int)) == -1) 
+    if (setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(int)) == -1)
     {
         perror("setsockopt(2)");
         cleanup(listeningSocket, -1);
@@ -143,9 +143,8 @@ int main(int argc, char *argv[])
     serverAddress.sin_port = htons(atoi(argv[2]));
     serverAddress.sin_addr.s_addr = INADDR_ANY;
 
-
     // Bind the server address to the socket.
-    if (bind(listeningSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1) 
+    if (bind(listeningSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) == -1)
     {
         perror("bind() failed");
         cleanup(listeningSocket, -1);
@@ -154,7 +153,7 @@ int main(int argc, char *argv[])
     printf("Bind success\n");
 
     // Listen for incoming connections.
-    if (listen(listeningSocket, MAX_PENDING_CONNECTIONS) == -1) 
+    if (listen(listeningSocket, MAX_PENDING_CONNECTIONS) == -1)
     {
         perror("listen() failed");
         cleanup(listeningSocket, -1);
@@ -167,13 +166,13 @@ int main(int argc, char *argv[])
     struct sockaddr_in clientAddress;
     socklen_t clientAddressLen = sizeof(clientAddress);
 
-    while (1) 
+    while (1)
     {
         // Accept the connection.
         int clientSocket = accept(listeningSocket, (struct sockaddr *)&clientAddress, &clientAddressLen);
 
         // Check for errors.
-        if (clientSocket == -1) 
+        if (clientSocket == -1)
         {
             perror("accept() failed");
             cleanup(listeningSocket, -1);
@@ -204,16 +203,20 @@ int main(int argc, char *argv[])
 
             while ((bytes_received = recv(clientSocket, buffer, sizeof(buffer), 0)) > 0 && finishflag == 0 && exitflag == 0)
             {
+                totalBytes += bytes_received;
+
                 if (firstround)
                 {
                     start_time = clock();
                     printf("start receiving data\n");
                 }
+                //printf("Received message: %s\n", buffer);
+                //printf("Bytes received: %d\n", bytes_received);
                 if ((strstr(buffer, "Finish\n") != NULL))
                 {
                     printf("Received finish command. Exiting loop.\n");
                     break;
-                } 
+                }
                 if ((strstr(buffer, "Exit\n") != NULL))
                 {
                     printf("Received exit command. Exiting loop.\n");
@@ -221,24 +224,25 @@ int main(int argc, char *argv[])
                     break;
                 }
                 // Handle received data
-                if (bytes_received < 0) 
+                if (bytes_received < 0)
                 {
                     perror("recv(2)");
                     cleanup(listeningSocket, clientSocket);
                     return 1;
-                } else if (bytes_received == 0) 
+                }
+                else if (bytes_received == 0)
                 {
                     fprintf(stdout, "Client %s:%d disconnected\n", inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port));
                     cleanup(listeningSocket, clientSocket);
                     break;
-                } else 
+                }
+                else
                 {
                     // Ensure that the buffer is null-terminated
                     if (buffer[BUFFER_SIZE - 1] != '\0')
                         buffer[BUFFER_SIZE - 1] = '\0';
                 }
                 firstround = 0;
-                totalBytes += bytes_received;
                 bzero(buffer, BUFFER_SIZE);
             }
             // Capture end time
@@ -255,13 +259,12 @@ int main(int argc, char *argv[])
             }
         }
 
-
         // Send back a message to the client.
         int bytes_sent = send(clientSocket, message, strlen(message), 0);
         printf("Sending exit message to the client\n");
 
         // Handle sent data
-        if (bytes_sent < 0) 
+        if (bytes_sent < 0)
         {
             perror("send(2)");
             cleanup(listeningSocket, clientSocket);
@@ -280,7 +283,7 @@ int main(int argc, char *argv[])
     printf("Stats:\n");
     printf("CC Algorithm: %s\n", argv[4]);
     printf("Number of runs: %zu\n", list->_size);
-    Node* current = list->_head; // Use a temporary pointer to traverse the list
+    Node *current = list->_head; // Use a temporary pointer to traverse the list
 
     for (int i = 0; i < list->_size; i++)
     {
