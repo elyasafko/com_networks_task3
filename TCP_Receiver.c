@@ -215,6 +215,7 @@ int main(int argc, char *argv[])
                 if ((strstr(buffer, "Finish\n") != NULL))
                 {
                     printf("Received finish command. Exiting loop.\n");
+                    finishflag = 1;
                     break;
                 }
                 if ((strstr(buffer, "Exit\n") != NULL))
@@ -253,8 +254,8 @@ int main(int argc, char *argv[])
             {
                 printf("end receiving data\n");
                 printf("Total bytes received: %d\n", totalBytes);
-                StrList_insertLast(list, round, milliseconds, bytes_received / milliseconds);
-                fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, bytes_received / milliseconds);
+                StrList_insertLast(list, round, milliseconds, totalBytes / (milliseconds * 1000.0));
+                fprintf(stdout, "Run #%d Data: Time: %fms Speed: %fMB/s\n", round, milliseconds, totalBytes / (milliseconds * 1000.0));
                 round++;
             }
         }

@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
     {
         actual_size++;
     }
-    
+
     /*
     if (actual_size == size)
     {
@@ -143,6 +143,7 @@ int main(int argc, char *argv[])
             bytesSent += ret;
             printf("Sent %d bytes\n", bytesSent);
         }
+        printf("Sending Finish message to the server\n");
         char *finishMessage = "Finish\n";
         send(sock, finishMessage, strlen(finishMessage), 0);
         printf("Finish message sent\n");

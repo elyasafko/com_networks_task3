@@ -71,8 +71,8 @@ int main(int argc, char* argv[])
 
             // Calculate time difference in milliseconds
             double milliseconds = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
-            StrList_insertLast(strList, round, milliseconds, totalBytes / milliseconds);
-            printf("Run #%d Data: Time: %fms Speed: %fMB/s\n\n", round, milliseconds, totalBytes / milliseconds);
+            StrList_insertLast(strList, round, milliseconds, totalBytes / (milliseconds * 1000.0));
+            printf("Run #%d Data: Time: %fms Speed: %fMB/s\n\n", round, milliseconds, totalBytes / (milliseconds * 1000.0));
             round++;
         }
     } while (done > 0);
