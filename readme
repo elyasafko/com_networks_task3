@@ -38,8 +38,8 @@ pcap + screenshots
 	tcp reno
 	tcp cubic
 	rudp
-	
-	
+
+
 TCP:
 ./TCP_Receiver -p 1234 -algo reno
 
