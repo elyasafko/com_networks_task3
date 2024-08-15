@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
-#define BUFFER_SIZE 65536
+#define BUFFER_SIZE (2*1024*1024)
 
 /*
 * @brief
@@ -36,8 +36,12 @@ char *util_generate_random_data(unsigned int size)
     // Randomize the seed of the random number generator.
     srand(time(NULL));
 
-    for (unsigned int i = 0; i < size; i++)
+    for (unsigned int i = 0; i < size; i++) {
         *(buffer + i) = ((unsigned int)rand() % 256);
+        // 'F' and 'E' reserved for Finish and End flags respectively
+        if ((*(buffer + i) == 'F') || (*(buffer + i) == 'E'))
+            i--;
+    }
 
     return buffer;
 }
@@ -47,34 +51,13 @@ int main(int argc, char *argv[])
     char buffer[BUFFER_SIZE] = {0};
 
     // Generate some random data.
-    unsigned int size = 2 * 1024 * 1024; // 2MB
-    // unsigned int size = 2 * 128; // 2KB
-    char *message = util_generate_random_data(size);
-
+    char *message = util_generate_random_data(BUFFER_SIZE);
     if (message == NULL)
     {
         perror("util_generate_random_data() failed");
         return -1;
     }
-
-    // Assuming the function should allocate 'size' bytes:
-    unsigned int actual_size = 0;
-    while (actual_size < size && message[actual_size] != '\0')
-    {
-        actual_size++;
-    }
-
-    /*
-    if (actual_size == size)
-    {
-        printf("Successfully generated %u bytes of random data.\n", size);
-    }
-    else
-    {
-        printf("Error: Expected %u bytes, but generated %u bytes.\n", size, actual_size);
-    }
-    */
-    //printf("This is the message: %s\n", message);
+    printf("Generated %d bytes of random data\n", BUFFER_SIZE);
 
     // Create a socket.
     int sock = -1;
@@ -131,9 +114,9 @@ int main(int argc, char *argv[])
     {
         // Send the data.
         int bytesSent = 0;
-        while (bytesSent < size)
+        while (bytesSent < BUFFER_SIZE)
         {
-            int ret = send(sock, message + bytesSent, size - bytesSent, 0);
+            int ret = send(sock, message + bytesSent, BUFFER_SIZE - bytesSent, 0);
             if (ret < 0)
             {
                 perror("send(2)");
@@ -144,7 +127,7 @@ int main(int argc, char *argv[])
             printf("Sent %d bytes\n", bytesSent);
         }
         printf("Sending Finish message to the server\n");
-        char *finishMessage = "Finish\n";
+        char *finishMessage = "F";
         send(sock, finishMessage, strlen(finishMessage), 0);
         printf("Finish message sent\n");
 
@@ -154,7 +137,7 @@ int main(int argc, char *argv[])
 
     // Send exit message to the server
     printf("Sending exit message to the server\n");
-    char *exitMessage = "Exit\n";
+    char *exitMessage = "E";
     send(sock, exitMessage, strlen(exitMessage), 0);
     printf("Exit message sent\n");
 

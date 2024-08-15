@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
         while (exitflag == 0)
         {
             // Clear the buffer
-            memset(buffer, 0, sizeof(buffer));
+            bzero(buffer, BUFFER_SIZE);
 
             clock_t start_time, end_time;
 
@@ -210,15 +210,13 @@ int main(int argc, char *argv[])
                     start_time = clock();
                     printf("start receiving data\n");
                 }
-                //printf("Received message: %s\n", buffer);
-                //printf("Bytes received: %d\n", bytes_received);
-                if ((strstr(buffer, "Finish\n") != NULL))
+                if (memchr(buffer, 'F', sizeof(buffer)) != NULL)
                 {
                     printf("Received finish command. Exiting loop.\n");
                     finishflag = 1;
                     break;
                 }
-                if ((strstr(buffer, "Exit\n") != NULL))
+                if (memchr(buffer, 'E', sizeof(buffer)) != NULL)
                 {
                     printf("Received exit command. Exiting loop.\n");
                     exitflag = 1;
