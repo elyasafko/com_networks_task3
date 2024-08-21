@@ -110,7 +110,7 @@ int rudp_socket(int sock)
         int send_result = sendto(sock, packet, sizeof(RUDP_Packet), 0, NULL, 0);
         if (send_result == -1)
         {
-            perror("sendto failed");
+            perror("sendto() failed");
             free(packet); // free allocated memory
             return -1;
         }
@@ -130,7 +130,7 @@ int rudp_socket(int sock)
             int recv_result = recvfrom(sock, recv_packet, sizeof(RUDP_Packet), 0, NULL, NULL);
             if (recv_result == -1)
             {
-                perror("recvfrom failed");
+                perror("recvfrom() failed");
                 free(recv_packet);
                 free(packet);
                 return -1;
@@ -266,7 +266,7 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strLis
     int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, NULL, NULL);
     if (recv_result == -1)
     {
-        perror("recvfrom failed");
+        perror("recvfrom() failed");
         free(packet);
         return -1;
     }
@@ -372,7 +372,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
             ssize_t send_result = sendto(sock, packet, offsetof(RUDP_Packet, data) + packet->length, 0, NULL, 0); // send the packet
             if (send_result == -1) // if the send failed
             {
-                perror("sendto failed");
+                perror("sendto() failed");
                 free(packet);
                 free(recv_packet);
                 return -1;
@@ -387,7 +387,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
                 ssize_t recv_result = recvfrom(sock, recv_packet, sizeof(RUDP_Packet), 0, NULL, 0); // receive the packet
                 if (recv_result == -1) // if the receive failed
                 {
-                    printf("recvfrom failed");
+                    perror("recvfrom() failed");
                     free(packet);
                     free(recv_packet);
                     return -1;
@@ -439,7 +439,7 @@ int rudp_close(int sock, int send)
         int sendResult = sendto(sock, close_pk, sizeof(RUDP_Packet), 0, NULL, 0);
         if (sendResult == -1)
         {
-            perror("sendto failed");
+            perror("sendto() failed");
             free(close_pk);
             return -1;
         }
@@ -492,7 +492,7 @@ int send_ack(int socket, RUDP_Packet *packet)
     rudp_dump_headers("OUT", ack_packet);
     if (sendto(socket, ack_packet, sizeof(RUDP_Packet), 0, NULL, 0) == -1)
     {
-        perror("sendto failed");
+        perror("sendto() failed");
         free(ack_packet);
         return -1;
     }
