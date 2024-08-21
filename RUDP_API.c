@@ -262,14 +262,25 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strLis
         return -1;
     }
 
-    printf("%d: Waiting for RUDP socket [seq_num %d]\n", __LINE__, seq_num);
-    int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, NULL, NULL);
-    if (recv_result == -1)
+    int total_tries = 0; // total number of tries
+    while (total_tries < RETRY) // while the total number of tries is less than the maximum number of tries
     {
+        printf("%d: Waiting for RUDP socket [seq_num %d]\n", __LINE__, seq_num);
+        int recv_result = recvfrom(sock, packet, sizeof(RUDP_Packet), 0, NULL, NULL);
+        if (recv_result != -1)
+            break;
+
         perror("recvfrom() failed");
-        free(packet);
-        return -1;
+        total_tries++; // increment the total number of tries
     }
+
+    if (total_tries == RETRY) // if the total number of tries is equal to the maximum number of tries
+    {
+        printf("Could not recv packet %d\n", seq_num); // print an error message;
+        free(packet); // free the packet
+        return -1; // return an error
+    }
+
     rudp_dump_headers("IN ", packet);
 
     // Check if the packet is corrupted
@@ -288,8 +299,9 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strLis
         return 0;
     }
 
-    if (packet->seq_num != seq_num)
+    if ((packet->seq_num > seq_num) || (packet->seq_num - seq_num < -1))
     {
+        printf("seq_num error: packet %d expected %d\n", packet->seq_num, seq_num);
         free(packet);
         return -1;
     }
@@ -310,9 +322,13 @@ int rudp_recv(int sock, void *buffer, unsigned int buffer_size, pStrList *strLis
     {
         int len = packet->length;
         memcpy(buffer, packet->data, len);
-        free(packet);
 
-        seq_num++;
+        if (packet->seq_num == seq_num)
+            seq_num++;
+        else
+            printf("seq_num mismatch, not incrementing it: packet %d expected %d\n", packet->seq_num, seq_num);
+
+        free(packet);
         return len;
     }
 
@@ -388,9 +404,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
                 if (recv_result == -1) // if the receive failed
                 {
                     perror("recvfrom() failed");
-                    free(packet);
-                    free(recv_packet);
-                    return -1;
+                    break;
                 }
                 rudp_dump_headers("IN ", recv_packet);
 
