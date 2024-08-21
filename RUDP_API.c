@@ -412,6 +412,7 @@ int rudp_send(int sock, void *buffer, unsigned int buffer_size)
         {
             printf("Could not send packet %d\n", seq_num); // print an error message;
             free(packet); // free the packet
+            free(recv_packet);
             return -1; // return an error
         }
 
