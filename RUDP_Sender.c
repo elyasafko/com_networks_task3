@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
         {
             printf("Could not send RUDP message\n");
             close(sock);
-            return 1;
+            break;
         }
 
         printf("Sent %d bytes to the server!\n\n", size);
@@ -83,8 +83,8 @@ int main(int argc, char *argv[])
     }
     free(message);
 
-    // Close the socket UDP socket.
-    if (rudp_close(sock, 1) < 0) {
+    // Close the socket UDP socket, unless rudp_send() failed
+    if ((again != 'y') && (rudp_close(sock, 1) < 0)) {
         close(sock);
         return 1;
     }
