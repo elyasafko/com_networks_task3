@@ -574,6 +574,9 @@ void StrList_insertLast(StrList *strList, int run, double time, double speed)
 
 void print_stats(const StrList *strList)
 {
+    if (strList->_size < 1)
+        return;
+
     printf("-----------------------------\n");
     printf("Stats:\n");
     printf("Number of runs: %zu\n", strList->_size);
