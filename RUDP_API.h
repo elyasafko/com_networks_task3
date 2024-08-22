@@ -10,8 +10,8 @@
 
 #define MSG_BUFFER_SIZE 16384
 #define FILE_SIZE (1024 * 1024 * 2)
-#define RETRY 3
-#define TIMEOUT 30
+#define RETRY 5
+#define TIMEOUT 5
 
 typedef struct _RUDP_Flags 
 {
