@@ -14,16 +14,6 @@
 
 int seq_num; // id of the expected packet
 
-void rudp_dump_data(RUDP_Packet *packet)
-{
-    for (int q = 0; q < offsetof(RUDP_Packet, data) + 32; q += 16)
-        printf("0x%04X: %08X %08X %08X %08X\n", q,
-               *(int *)((char *)packet + q),
-               *(int *)((char *)packet + q + 4),
-               *(int *)((char *)packet + q + 8),
-               *(int *)((char *)packet + q + 12));
-}
-
 
 int udp_socket(const char *dest_ip, unsigned short int dest_port)
 {
