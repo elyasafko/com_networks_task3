@@ -9,6 +9,9 @@
 #include <errno.h>
 #include <stddef.h>
 
+#define rudp_dump_headers(x, p) \
+    printf("%03d: " x " SYN %d ACK %d DATA %d FIN %d length %05d checksum %04X seq_num %d\n", __LINE__, p->flags.SYN, p->flags.ACK, p->flags.DATA, p->flags.FIN, p->length, p->checksum, p->seq_num)
+
 int seq_num; // id of the expected packet
 
 void rudp_dump_data(RUDP_Packet *packet)
@@ -21,8 +24,6 @@ void rudp_dump_data(RUDP_Packet *packet)
                *(int *)((char *)packet + q + 12));
 }
 
-#define rudp_dump_headers(x, p) \
-    printf("%03d: " x " SYN %d ACK %d DATA %d FIN %d length %05d checksum %04X seq_num %d\n", __LINE__, p->flags.SYN, p->flags.ACK, p->flags.DATA, p->flags.FIN, p->length, p->checksum, p->seq_num)
 
 int udp_socket(const char *dest_ip, unsigned short int dest_port)
 {
